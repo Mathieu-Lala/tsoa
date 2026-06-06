@@ -934,6 +934,28 @@ export class TypeResolver {
       return referenceType;
     }
 
+    // Some declaration files model recursive arrays as interfaces that extend Array<T>
+    // (for example JSONSchema7Array from @types/json-schema). Treat these as aliases
+    // to array types so we don't try to resolve Array<T> as an object reference.
+    const arrayElementTypeNode = this.getArrayElementTypeFromHeritage(modelType);
+    if (arrayElementTypeNode) {
+      const elementType = new TypeResolver(arrayElementTypeNode, this.current, modelType, this.context).resolve();
+      const referenceType: Tsoa.ReferenceType = {
+        refName: refTypeName,
+        dataType: 'refAlias',
+        description,
+        type: {
+          dataType: 'array',
+          elementType,
+        },
+        validators: {},
+        deprecated,
+        ...(example && { example }),
+        ...(title && { title }),
+      };
+      return referenceType;
+    }
+
     const properties = new PropertyTransformer().transform(this, modelType);
     const additionalProperties = this.getModelAdditionalProperties(modelType);
     const inheritedProperties = this.getModelInheritedProperties(modelType) || [];
@@ -952,6 +974,35 @@ export class TypeResolver {
     referenceType.properties = referenceType.properties.concat(properties);
 
     return referenceType;
+  }
+
+  private getArrayElementTypeFromHeritage(modelType: ts.InterfaceDeclaration | ts.ClassDeclaration): ts.TypeNode | undefined {
+    const heritageClauses = modelType.heritageClauses;
+    if (!heritageClauses) {
+      return undefined;
+    }
+
+    for (const clause of heritageClauses) {
+      if (!clause.types) {
+        continue;
+      }
+
+      for (const heritageType of clause.types) {
+        if (!ts.isIdentifier(heritageType.expression)) {
+          continue;
+        }
+
+        if (heritageType.expression.text !== 'Array' && heritageType.expression.text !== 'ReadonlyArray') {
+          continue;
+        }
+
+        if (heritageType.typeArguments?.length === 1) {
+          return heritageType.typeArguments[0];
+        }
+      }
+    }
+
+    return undefined;
   }
 
   //Generates a name from the original type expression.

@@ -2,10 +2,9 @@ import { expect } from 'chai';
 import 'mocha';
 import * as ts from 'typescript';
 import { MetadataGenerator } from '@tsoa/cli/metadataGeneration/metadataGenerator';
-import { GenerateMetadataError } from '@tsoa/cli/metadataGeneration/exceptions';
 
 describe('Schema Regression Integration Tests', () => {
-  it('reproduces issue #1862 with @types/json-schema', () => {
+  it('resolves issue #1862 with @types/json-schema without throwing', () => {
     const compilerOptions: ts.CompilerOptions = {
       emitDecoratorMetadata: true,
       experimentalDecorators: true,
@@ -16,9 +15,12 @@ describe('Schema Regression Integration Tests', () => {
       types: ['json-schema'],
     };
 
-    expect(() => new MetadataGenerator('./fixtures/controllers/schemaRegressionController.ts', compilerOptions).Generate()).to.throw(
-      GenerateMetadataError,
-      "Could not find declarations for type 'Array<JSONSchema7Type>'. This might be a complex generic type that needs special handling.",
-    );
+    const metadata = new MetadataGenerator('./fixtures/controllers/schemaRegressionController.ts', compilerOptions).Generate();
+
+    expect(metadata.controllers).to.have.length(1);
+    const jsonSchemaArrayReference = Object.values(metadata.referenceTypeMap).find(type => type.refName.endsWith('JSONSchema7Array'));
+    expect(jsonSchemaArrayReference).to.exist;
+    expect(jsonSchemaArrayReference?.dataType).to.equal('refAlias');
+    expect((jsonSchemaArrayReference as any)?.type?.dataType).to.equal('array');
   });
 });
