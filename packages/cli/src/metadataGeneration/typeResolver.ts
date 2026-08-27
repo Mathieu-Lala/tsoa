@@ -978,7 +978,7 @@ export class TypeResolver {
 
   private getArrayElementTypeFromHeritage(modelType: ts.InterfaceDeclaration | ts.ClassDeclaration): ts.TypeNode | undefined {
     const heritageClauses = modelType.heritageClauses;
-    if (!heritageClauses) {
+    if (!heritageClauses || modelType.members.length > 0) {
       return undefined;
     }
 
@@ -988,11 +988,7 @@ export class TypeResolver {
       }
 
       for (const heritageType of clause.types) {
-        if (!ts.isIdentifier(heritageType.expression)) {
-          continue;
-        }
-
-        if (heritageType.expression.text !== 'Array' && heritageType.expression.text !== 'ReadonlyArray') {
+        if (!TypeResolver.isArrayHeritageType(heritageType)) {
           continue;
         }
 
@@ -1003,6 +999,14 @@ export class TypeResolver {
     }
 
     return undefined;
+  }
+
+  // `Array` / `ReadonlyArray` live in the TypeScript lib files, which are excluded from model
+  // resolution, so they can never be resolved as a reference type.
+  private static isArrayHeritageType(heritageType: ts.ExpressionWithTypeArguments): boolean {
+    const expression = heritageType.expression;
+    const name = ts.isIdentifier(expression) ? expression.text : ts.isPropertyAccessExpression(expression) ? expression.name.text : undefined;
+    return name === 'Array' || name === 'ReadonlyArray';
   }
 
   //Generates a name from the original type expression.
@@ -1186,6 +1190,11 @@ export class TypeResolver {
       }
 
       for (const t of clause.types) {
+        if (TypeResolver.isArrayHeritageType(t)) {
+          // Arrays contribute no named properties to the extending model.
+          continue;
+        }
+
         const baseEntityName = t.expression as ts.EntityName;
 
         // create subContext
